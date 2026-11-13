@@ -1,0 +1,304 @@
+/* =========================================================
+   MoneyUp – Styles (étape 4)
+   Les couleurs sont centralisées ici dans des variables :
+   pour changer la charte, on modifie seulement :root.
+   ========================================================= */
+
+:root {
+  --vert: #0f5132;        /* vert foncé principal (en-tête, cartes) */
+  --vert-clair: #2e9e44;  /* vert du logo */
+  --or: #f2c94c;          /* jaune / doré secondaire */
+  --fond: #f6f5ef;        /* fond de page crème */
+  --blanc: #ffffff;
+  --texte: #1f2421;
+  --texte-doux: #6b7280;
+  --bordure: #e5e7eb;
+  --rayon: 16px;
+  --ombre: 0 4px 20px rgba(0, 0, 0, 0.06);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--fond);
+  color: var(--texte);
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#app { display: flex; flex-direction: column; min-height: 100vh; }
+
+.container {
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+main.container { flex: 1; }
+
+/* ---------- En-tête ---------- */
+.header { background: var(--vert); color: var(--blanc); padding: 14px 0; }
+
+.header__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Le logo a un fond blanc : on le pose dans une pastille blanche arrondie */
+.brand__logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--blanc);
+  object-fit: contain;
+  padding: 2px;
+}
+
+.brand__text { display: flex; flex-direction: column; line-height: 1.1; }
+.brand__text strong { font-size: 1.3rem; letter-spacing: 0.5px; }
+.brand__text small { font-size: 0.7rem; text-transform: uppercase; opacity: 0.85; }
+.accent { color: var(--or); }
+
+.badge {
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* ---------- Titre principal ---------- */
+.hero { padding: 32px 0 20px; max-width: 620px; }
+
+.eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--texte-doux);
+  margin-bottom: 8px;
+}
+
+.hero h1 { font-size: clamp(1.6rem, 4vw, 2.2rem); line-height: 1.2; margin-bottom: 10px; }
+.hero__text { color: var(--texte-doux); }
+
+/* ---------- Pied de page ---------- */
+.footer { border-top: 1px solid var(--bordure); padding: 16px 0; font-size: 0.8rem; color: var(--texte-doux); }
+
+.footer__inner {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---------- Simulateur : mise en page ---------- */
+.chargement { color: var(--texte-doux); padding: 40px 0; text-align: center; }
+
+.simu {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  margin-bottom: 40px;
+}
+
+.carte {
+  background: var(--blanc);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 22px;
+}
+.carte__titre { font-size: 1rem; margin-bottom: 16px; }
+
+/* La carte de résultat reste visible quand on fait défiler (ordinateur) */
+.simu__resultat {
+  background: var(--blanc);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+  padding: 22px;
+  position: sticky;
+  top: 16px;
+}
+
+/* ---------- Champs ---------- */
+.champ { margin-bottom: 18px; }
+.champ__label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--texte-doux);
+  margin-bottom: 8px;
+}
+.champ__aide { font-size: 0.78rem; color: var(--texte-doux); margin-top: 6px; }
+
+/* ---------- Boutons de choix (pays, sens, devise, frais) ---------- */
+.choix { display: grid; gap: 8px; }
+.choix--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.choix--pays { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.choix__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--bordure);
+  border-radius: 12px;
+  background: var(--blanc);
+  color: var(--texte);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+.choix__btn:hover:not(:disabled) { border-color: var(--vert-clair); }
+.choix__btn.is-actif {
+  border-color: var(--vert);
+  background: #eaf4ee;
+  color: var(--vert);
+}
+.choix__btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.choix__btn:focus-visible { outline: 3px solid var(--or); outline-offset: 2px; }
+
+.choix--pays .choix__btn { flex-direction: column; gap: 4px; text-align: center; font-size: 0.78rem; }
+
+.drapeau {
+  width: 24px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+}
+.choix--pays .drapeau { width: 30px; height: 20px; }
+
+/* ---------- Saisie du montant ---------- */
+.saisie {
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--bordure);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--blanc);
+}
+.saisie:focus-within { border-color: var(--vert); }
+.saisie input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 14px;
+  font: inherit;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--texte);
+  background: transparent;
+}
+.saisie__devise {
+  padding: 0 16px;
+  font-weight: 700;
+  color: var(--texte-doux);
+  border-left: 1px solid var(--bordure);
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+/* ---------- Carte de résultat (verte) ---------- */
+.resultat {
+  background: var(--vert);
+  color: var(--blanc);
+  border-radius: var(--rayon);
+  padding: 20px;
+}
+.resultat--vide { background: #eef2ef; color: var(--texte-doux); text-align: center; }
+
+.resultat__label { font-size: 0.8rem; opacity: 0.85; }
+.resultat__montant {
+  font-size: clamp(1.8rem, 6vw, 2.4rem);
+  font-weight: 800;
+  line-height: 1.15;
+  margin: 4px 0;
+  word-break: break-word;
+}
+.resultat__sous { font-size: 0.8rem; color: var(--or); font-weight: 600; }
+
+.resultat__lignes {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+.ligne {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.82rem;
+  padding: 4px 0;
+}
+.ligne span { opacity: 0.85; }
+.ligne strong { white-space: nowrap; }
+.ligne--fort { font-size: 0.9rem; }
+.ligne--fort span { opacity: 1; font-weight: 600; }
+.resultat__sep { border-top: 1px dashed rgba(255, 255, 255, 0.3); margin: 8px 0; }
+
+.resultat__note {
+  margin-top: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  color: var(--or);
+}
+
+/* ---------- Bouton WhatsApp ---------- */
+.btn-whatsapp {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--or);
+  color: var(--vert);
+  font-weight: 800;
+  text-decoration: none;
+  transition: transform 0.1s, filter 0.15s;
+}
+.btn-whatsapp:hover { filter: brightness(1.05); }
+.btn-whatsapp:active { transform: scale(0.98); }
+.btn-whatsapp:focus-visible { outline: 3px solid var(--blanc); outline-offset: 2px; }
+
+.avertissement { font-size: 0.75rem; color: var(--texte-doux); margin-top: 12px; }
+
+/* ---------- Tablette et mobile ---------- */
+@media (max-width: 860px) {
+  .simu { grid-template-columns: minmax(0, 1fr); }
+  .simu__resultat { position: static; }
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 560px) {
+  .badge { display: none; }
+  .footer__inner { flex-direction: column; }
+  .choix--pays { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .carte, .simu__resultat { padding: 16px; }
+}

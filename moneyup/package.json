@@ -1,0 +1,19 @@
+{
+  "name": "moneyup",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vite": "^8.3.6",
+    "vitest": "^4.1.12"
+  },
+  "dependencies": {
+    "decimal.js": "^10.6.0"
+  }
+}
