@@ -1,321 +1,280 @@
 // =========================================================
-// INTERFACE DU SIMULATEUR
+// MOTEUR DE SIMULATION MONEYUP
 // ---------------------------------------------------------
-// Principe : un objet "etat" contient les choix du client.
-// À chaque changement : on met à jour l'état, puis on redessine
-// les boutons (rendreChoix) et la carte de résultat (rendreResultat).
-// Aucun calcul ici : tout passe par simuler() du moteur.
+// Une seule fonction publique : simuler(config, demande).
+// Elle ne touche jamais à l'affichage (cahier des charges §6) :
+// elle reçoit des données, elle renvoie un résultat.
+//
+// VOCABULAIRE
+//   devise d'envoi  : celle de la personne qui envoie
+//                     (MAD si depuisMaroc, devise du pays si versMaroc)
+//   devise de réception : l'autre
+//   montant envoyé  : le montant de départ, base des frais "envoye"
+//   montant converti: ce qui arrive dans la devise de réception, avant frais opérateur
+//   net reçu        : ce que le bénéficiaire touche réellement
+//
+// MODE DES FRAIS (choisi par le client)
+//   'deduit' : il paie le montant envoyé, les frais sont retirés en chemin
+//   'ajoute' : les frais s'ajoutent à ce qu'il paie, le bénéficiaire
+//              reçoit le montant converti complet
+//
+// CALCUL DIRECT  : le client saisit dans la devise d'envoi
+// CALCUL INVERSE : le client saisit dans la devise de réception = le montant
+//                  NET qu'il veut que le bénéficiaire reçoive. Le moteur
+//                  trouve le montant à envoyer, puis refait un calcul direct
+//                  pour garantir que les deux sens sont toujours cohérents.
 // =========================================================
 
-import { simuler } from '../engine/simulateur.js';
-import { formatMontant, libelleDevise, texteTaux } from './format.js';
-import { construireMessage, lienWhatsApp } from './whatsapp.js';
+import { Decimal, convertir, arrondir } from './conversion.js';
+import { montantFrais } from './frais.js';
 
-// ---- petits morceaux de HTML réutilisables ----
+const MONTANT_MAXIMUM = 1_000_000_000;
 
-// Neutralise < > & " ' dans les textes saisis par l'admin (noms des frais, message…)
-const esc = (v) =>
-  String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+export const MESSAGES = {
+  PAYS_INCONNU: "Ce pays n'est pas disponible.",
+  CORRIDOR_INACTIF: "Ce sens de transfert n'est pas disponible pour le moment.",
+  DEVISE_INVALIDE: "Cette devise n'est pas disponible pour ce transfert.",
+  MODE_INVALIDE: 'Mode de frais inconnu.',
+  MONTANT_VIDE: 'Saisissez un montant.',
+  MONTANT_INVALIDE: 'Le montant doit être un nombre (ex. 1500 ou 1500,50).',
+  MONTANT_NEGATIF: 'Le montant ne peut pas être négatif.',
+  MONTANT_TROP_PETIT: 'Le montant est trop petit.',
+  MONTANT_TROP_GRAND: 'Le montant est trop élevé pour une simulation.',
+  FRAIS_TROP_ELEVES: 'Le montant ne couvre pas les frais.',
+  FRAIS_A_CONFIRMER: 'Les frais pour ce montant sont à confirmer avec MoneyUp.',
+};
 
-const drapeau = (fichier, alt = '') =>
-  `<img class="drapeau" src="/drapeaux/${fichier}.svg" alt="${alt}" width="24" height="16" />`;
-
-// Drapeau associé à une devise dans le corridor choisi
-const drapeauDevise = (code, pays) => drapeau(code === 'MAD' ? 'maroc' : pays.id);
-
-function bouton(champ, valeur, actif, contenu, desactive = false) {
-  return `
-    <button type="button" class="choix__btn${actif ? ' is-actif' : ''}"
-      data-champ="${champ}" data-valeur="${valeur}"
-      aria-pressed="${actif}" ${desactive ? 'disabled' : ''}>
-      ${contenu}
-    </button>`;
+function erreur(code) {
+  return { ok: false, code, message: MESSAGES[code] };
 }
 
-export function monterSimulateur(conteneur, config) {
-  // ---------------------------------------------------------
-  // ÉTAT : les choix actuels du client
-  // ---------------------------------------------------------
-  const etat = {
-    paysId: config.pays[0].id,
-    sens: 'depuisMaroc',
-    deviseSaisie: 'MAD',
-    montant: '1000',
-    modeFrais: config.parametres.modeFraisParDefaut,
-  };
-  lireLien(etat, config);
-
-  const paysActuel = () => config.pays.find((p) => p.id === etat.paysId);
-  // [devise d'envoi, devise de réception]
-  const devisesCorridor = () => {
-    const p = paysActuel();
-    return etat.sens === 'depuisMaroc' ? ['MAD', p.devise] : [p.devise, 'MAD'];
-  };
-  const dateCourte = (iso) =>
-    new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-  const fm = (valeur, code) => formatMontant(valeur, code, config.devises[code].decimales);
-
-  // ---------------------------------------------------------
-  // SQUELETTE (dessiné une seule fois)
-  // ---------------------------------------------------------
-  conteneur.innerHTML = `
-    <div class="simu">
-      <form class="carte simu__form" novalidate>
-        <h2 class="carte__titre">Configurez votre transfert</h2>
-
-        <div class="champ">
-          <span class="champ__label">Pays concerné</span>
-          <div class="choix choix--pays" id="choix-pays"></div>
-        </div>
-
-        <div class="champ">
-          <span class="champ__label">Sens du transfert</span>
-          <div class="choix choix--2" id="choix-sens"></div>
-          <p class="champ__aide" id="aide-sens"></p>
-        </div>
-
-        <div class="champ">
-          <span class="champ__label">Je saisis le montant en</span>
-          <div class="choix choix--2" id="choix-devise"></div>
-        </div>
-
-        <div class="champ">
-          <label class="champ__label" for="montant" id="label-montant"></label>
-          <div class="saisie">
-            <input id="montant" name="montant" type="text" inputmode="decimal"
-              autocomplete="off" />
-            <span class="saisie__devise" id="suffixe-montant"></span>
-          </div>
-          <p class="champ__aide" id="aide-montant"></p>
-        </div>
-
-        <div class="champ">
-          <span class="champ__label">Frais</span>
-          <div class="choix choix--2" id="choix-mode"></div>
-        </div>
-      </form>
-
-      <aside class="simu__resultat">
-        <h2 class="carte__titre">Estimation de votre transfert</h2>
-        <div id="resultat" aria-live="polite"></div>
-        <p class="avertissement">${esc(config.parametres.messageAvertissement)}</p>
-      </aside>
-    </div>`;
-
-  const $ = (sel) => conteneur.querySelector(sel);
-
-  // Valeur posée par propriété (et non dans le HTML) : un montant venu
-  // du lien de partage ne peut ainsi jamais injecter de code dans la page.
-  $('#montant').value = etat.montant;
-
-  // ---------------------------------------------------------
-  // BOUTONS DE CHOIX
-  // ---------------------------------------------------------
-  function rendreChoix() {
-    const p = paysActuel();
-    const [envoi, recu] = devisesCorridor();
-
-    $('#choix-pays').innerHTML = config.pays
-      .map((pays) => bouton('paysId', pays.id, pays.id === etat.paysId, `${drapeau(pays.id)}<span>${pays.nom}</span>`))
-      .join('');
-
-    $('#choix-sens').innerHTML =
-      bouton('sens', 'depuisMaroc', etat.sens === 'depuisMaroc', "J'envoie de l'argent", !p.corridors.depuisMaroc?.actif) +
-      bouton('sens', 'versMaroc', etat.sens === 'versMaroc', "Je reçois de l'argent", !p.corridors.versMaroc?.actif);
-
-    const moyen = p.corridors[etat.sens]?.moyenPaiement;
-    $('#aide-sens').textContent =
-      (etat.sens === 'depuisMaroc' ? `Depuis le Maroc vers ${p.nom}` : `Depuis ${p.nom} vers le Maroc`) +
-      (moyen ? ` · via ${moyen}` : '');
-
-    $('#choix-devise').innerHTML = [envoi, recu]
-      .map((code) => bouton('deviseSaisie', code, code === etat.deviseSaisie,
-        `${drapeauDevise(code, p)}<span>${config.devises[code].nom} (${libelleDevise(code)})</span>`))
-      .join('');
-
-    const saisitEnvoi = etat.deviseSaisie === envoi;
-    $('#label-montant').textContent = saisitEnvoi
-      ? 'Montant envoyé'
-      : 'Montant que le bénéficiaire doit recevoir';
-    $('#aide-montant').textContent = saisitEnvoi
-      ? 'On calcule ce que le bénéficiaire reçoit.'
-      : 'On calcule combien il faut envoyer.';
-    $('#suffixe-montant').textContent = etat.deviseSaisie;
-
-    $('#choix-mode').innerHTML =
-      bouton('modeFrais', 'deduit', etat.modeFrais === 'deduit', 'Déduits du montant') +
-      bouton('modeFrais', 'ajoute', etat.modeFrais === 'ajoute', 'Ajoutés à mon paiement');
-  }
-
-  // ---------------------------------------------------------
-  // CARTE DE RÉSULTAT
-  // ---------------------------------------------------------
-  function ligne(libelle, valeur, classe = '') {
-    return `<div class="ligne ${classe}"><span>${libelle}</span><strong>${valeur}</strong></div>`;
-  }
-
-  function libelleFrais(f) {
-    return esc(f.pourcentage !== null ? `${f.libelle} (${String(f.pourcentage).replace('.', ',')} %)` : f.libelle);
-  }
-
-  function rendreResultat() {
-    ecrireLien(etat);
-    const r = simuler(config, etat);
-
-    if (!r.ok) {
-      $('#resultat').innerHTML = `<div class="resultat resultat--vide"><p>${r.message}</p></div>`;
-      return;
-    }
-
-    const env = r.deviseEnvoi;
-    const rec = r.deviseRecu;
-
-    const entete = r.calcul === 'direct'
-      ? `<p class="resultat__label">Le bénéficiaire reçoit environ</p>
-         <p class="resultat__montant">${fm(r.netRecu, rec)}</p>
-         <p class="resultat__sous">Vous payez ${fm(r.totalAPayer, env)}</p>`
-      : `<p class="resultat__label">Vous devez payer environ</p>
-         <p class="resultat__montant">${fm(r.totalAPayer, env)}</p>
-         <p class="resultat__sous">pour que le bénéficiaire reçoive ${fm(r.netRecu, rec)}</p>`;
-
-    const lignes = [
-      ligne('Taux appliqué', texteTaux(r.taux)),
-      ligne('Montant envoyé', fm(r.montantEnvoye, env)),
-      ...r.fraisEnvoi.map((f) => ligne(libelleFrais(f), fm(f.montant, env))),
-      ligne('Montant converti', fm(r.montantConverti, rec)),
-      ...r.fraisRecu.map((f) => ligne(libelleFrais(f), fm(f.montant, rec))),
-    ];
-    if (r.modeFrais === 'ajoute' && r.fraisRecuPayesEnEnvoi > 0) {
-      lignes.push(ligne('Frais de retrait réglés par vous', fm(r.fraisRecuPayesEnEnvoi, env)));
-    }
-
-    const note = r.modeFrais === 'deduit'
-      ? 'Les frais sont déduits : le bénéficiaire reçoit le montant net ci-dessus.'
-      : 'Les frais sont ajoutés à votre paiement : le bénéficiaire reçoit le montant converti complet.';
-
-    $('#resultat').innerHTML = `
-      <div class="resultat">
-        ${entete}
-        <div class="resultat__lignes">
-          ${lignes.join('')}
-          <div class="resultat__sep"></div>
-          ${ligne('Total à payer', fm(r.totalAPayer, env), 'ligne--fort')}
-          ${ligne('Net reçu par le bénéficiaire', fm(r.netRecu, rec), 'ligne--fort')}
-        </div>
-        <p class="resultat__note">${note}</p>
-        ${boutonWhatsApp(r)}
-      </div>
-      <div class="resultat__pied">
-        <span>${config.misAJourLe ? `Taux en vigueur au ${dateCourte(config.misAJourLe)}` : ''}</span>
-        <button type="button" class="btn-partage" id="partager">Partager cette simulation</button>
-      </div>`;
-  }
-
-  // ---------------------------------------------------------
-  // BOUTON WHATSAPP (étape 5)
-  // Masqué si aucun numéro n'est configuré.
-  // ---------------------------------------------------------
-  function boutonWhatsApp(r) {
-    const numero = config.parametres.whatsapp;
-    if (!numero) return '';
-    const lien = lienWhatsApp(numero, construireMessage(r, config));
-    return `
-      <a class="btn-whatsapp" href="${lien}" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-          <path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm3 6.5a1.5 1.5 0 1 0 0 .01zm5 0a1.5 1.5 0 1 0 0 .01zm5 0a1.5 1.5 0 1 0 0 .01z"/>
-        </svg>
-        Continuer sur WhatsApp
-      </a>`;
-  }
-
-  // ---------------------------------------------------------
-  // ÉVÉNEMENTS
-  // ---------------------------------------------------------
-  conteneur.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-champ]');
-    if (!btn || btn.disabled) return;
-    const { champ, valeur } = btn.dataset;
-    etat[champ] = valeur;
-
-    // nouveau pays ou nouveau sens : on revient à la devise d'envoi
-    if (champ === 'paysId' || champ === 'sens') {
-      const p = paysActuel();
-      if (!p.corridors[etat.sens]?.actif) {
-        etat.sens = etat.sens === 'depuisMaroc' ? 'versMaroc' : 'depuisMaroc';
-      }
-      etat.deviseSaisie = devisesCorridor()[0];
-    }
-    rendreChoix();
-    rendreResultat();
-  });
-
-  $('#montant').addEventListener('input', (e) => {
-    etat.montant = e.target.value;
-    rendreResultat();
-  });
-
-  // Entrée dans le champ ne doit pas recharger la page
-  $('.simu__form').addEventListener('submit', (e) => e.preventDefault());
-
-  // Bouton "Partager cette simulation" : partage natif sur téléphone,
-  // sinon copie du lien dans le presse-papiers.
-  conteneur.addEventListener('click', async (e) => {
-    const btn = e.target.closest('#partager');
-    if (!btn) return;
-    const url = location.href;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'Simulation MoneyUp', url });
-      } else {
-        await navigator.clipboard.writeText(url);
-        btn.textContent = '✓ Lien copié';
-        setTimeout(() => (btn.textContent = 'Partager cette simulation'), 2000);
-      }
-    } catch {
-      /* partage annulé par l'utilisateur : rien à faire */
-    }
-  });
-
-  rendreChoix();
-  rendreResultat();
-}
-
-// =========================================================
-// LIEN DE PARTAGE
 // ---------------------------------------------------------
-// Les choix sont recopiés dans l'adresse de la page, ex. :
-//   /?pays=togo&sens=envoi&montant=1000
-// Ce lien rouvre le simulateur exactement sur cette simulation.
-// MoneyUp peut ainsi partager un lien par pays dans ses groupes.
-// =========================================================
-const SENS_LIEN = { envoi: 'depuisMaroc', reception: 'versMaroc' };
-
-function lireLien(etat, config) {
-  const q = new URLSearchParams(location.search);
-  const pays = config.pays.find((p) => p.id === q.get('pays'));
-  if (!pays) return;
-  etat.paysId = pays.id;
-
-  const sens = SENS_LIEN[q.get('sens')];
-  etat.sens = sens && pays.corridors[sens]?.actif
-    ? sens
-    : pays.corridors.depuisMaroc?.actif ? 'depuisMaroc' : 'versMaroc';
-
-  const [envoi, recu] = etat.sens === 'depuisMaroc' ? ['MAD', pays.devise] : [pays.devise, 'MAD'];
-  etat.deviseSaisie = q.get('devise') === recu ? recu : envoi;
-
-  if (q.get('montant')) etat.montant = q.get('montant').slice(0, 20);
-  if (['deduit', 'ajoute'].includes(q.get('frais'))) etat.modeFrais = q.get('frais');
+// Lecture de la saisie : accepte "1 500", "1500,50", 1500…
+// ---------------------------------------------------------
+export function lireMontant(saisie) {
+  const texte = String(saisie ?? '').replace(/[\s  ]/g, '').replace(',', '.');
+  if (texte === '') return { code: 'MONTANT_VIDE' };
+  if (texte.startsWith('-')) return { code: 'MONTANT_NEGATIF' };
+  if (!/^\d+(\.\d+)?$/.test(texte)) return { code: 'MONTANT_INVALIDE' };
+  return { valeur: new Decimal(texte) };
 }
 
-function ecrireLien(etat) {
-  const q = new URLSearchParams({
-    pays: etat.paysId,
-    sens: etat.sens === 'depuisMaroc' ? 'envoi' : 'reception',
-    devise: etat.deviseSaisie,
-    montant: etat.montant,
-    frais: etat.modeFrais,
+// ---------------------------------------------------------
+// Palier : celui dont "aPartirDe" est le plus grand <= montant envoyé
+// ---------------------------------------------------------
+function paliersTries(corridor) {
+  return [...corridor.paliers].sort((a, b) => a.aPartirDe - b.aPartirDe);
+}
+
+function choisirPalier(corridor, montantEnvoye) {
+  const paliers = paliersTries(corridor);
+  let choisi = paliers[0];
+  for (const p of paliers) if (montantEnvoye.gte(p.aPartirDe)) choisi = p;
+  return choisi;
+}
+
+// Somme des frais d'une liste, chaque frais arrondi à la devise.
+// Renvoie { lignes, total } ou null si un frais n'est pas calculable.
+function calculerFrais(listeFrais, base, devise, decimales) {
+  const lignes = [];
+  let total = new Decimal(0);
+  for (const f of listeFrais) {
+    const brut = montantFrais(f, base);
+    if (brut === null) return null;
+    const montant = arrondir(brut, decimales);
+    total = total.plus(montant);
+    lignes.push({
+      id: f.id,
+      libelle: f.libelle,
+      categorie: f.categorie,
+      type: f.type,
+      pourcentage: f.type === 'pourcentage' ? f.valeur : null,
+      montant,
+      devise,
+    });
+  }
+  return { lignes, total };
+}
+
+// ---------------------------------------------------------
+// CALCUL DIRECT : à partir du montant envoyé
+// ---------------------------------------------------------
+function calculDirect(ctx, montantEnvoye) {
+  const { corridor, mode, deviseEnvoi, deviseRecu, decEnvoi, decRecu } = ctx;
+  const palier = choisirPalier(corridor, montantEnvoye);
+
+  // 1. Frais calculés sur le montant envoyé (MoneyUp, Airtel côté envoi…)
+  const fraisEnvoi = calculerFrais(
+    palier.frais.filter((f) => f.base === 'envoye'), montantEnvoye, deviseEnvoi, decEnvoi,
+  );
+  if (!fraisEnvoi) return erreur('FRAIS_A_CONFIRMER');
+
+  // 2. Montant réellement converti
+  const aConvertir = mode === 'deduit' ? montantEnvoye.minus(fraisEnvoi.total) : montantEnvoye;
+  if (aConvertir.lte(0)) return erreur('FRAIS_TROP_ELEVES');
+  const converti = arrondir(convertir(aConvertir, palier.taux, deviseEnvoi, deviseRecu), decRecu);
+
+  // 3. Frais calculés sur le montant converti (retrait Airtel, MTN, Mixx…)
+  const fraisRecu = calculerFrais(
+    palier.frais.filter((f) => f.base === 'recu'), converti, deviseRecu, decRecu,
+  );
+  if (!fraisRecu) return erreur('FRAIS_A_CONFIRMER');
+
+  // 4. Ce que le bénéficiaire touche et ce que l'expéditeur paie
+  let netRecu, totalAPayer, fraisRecuPayesEnEnvoi;
+  if (mode === 'deduit') {
+    netRecu = converti.minus(fraisRecu.total);
+    totalAPayer = montantEnvoye;
+    fraisRecuPayesEnEnvoi = new Decimal(0);
+  } else {
+    netRecu = converti;
+    // les frais opérateur sont réglés par l'expéditeur, convertis dans sa devise
+    fraisRecuPayesEnEnvoi = arrondir(
+      convertir(fraisRecu.total, palier.taux, deviseRecu, deviseEnvoi), decEnvoi, 'haut',
+    );
+    totalAPayer = montantEnvoye.plus(fraisEnvoi.total).plus(fraisRecuPayesEnEnvoi);
+  }
+  if (netRecu.lte(0)) return erreur('FRAIS_TROP_ELEVES');
+
+  return {
+    ok: true,
+    palier,
+    montantEnvoye,
+    fraisEnvoi: fraisEnvoi.lignes,
+    montantConverti: converti,
+    fraisRecu: fraisRecu.lignes,
+    fraisRecuPayesEnEnvoi,
+    netRecu,
+    totalAPayer,
+  };
+}
+
+// ---------------------------------------------------------
+// Résout  x = cible + frais(x)  (plus petit x qui convient).
+// Les frais ne diminuent jamais quand le montant augmente,
+// donc la suite x0 <= x1 <= x2 … s'arrête forcément.
+// ---------------------------------------------------------
+function resoudre(cible, listeFrais, decimales) {
+  let x = arrondir(cible, decimales, 'haut');
+  for (let i = 0; i < 500; i++) {
+    let frais = new Decimal(0);
+    for (const f of listeFrais) {
+      const m = montantFrais(f, x);
+      if (m === null) return null;
+      frais = frais.plus(arrondir(m, decimales));
+    }
+    const suivant = arrondir(cible.plus(frais), decimales, 'haut');
+    if (suivant.lte(x)) return x;
+    x = suivant;
+  }
+  return x;
+}
+
+// ---------------------------------------------------------
+// CALCUL INVERSE : à partir du net voulu par le bénéficiaire
+// ---------------------------------------------------------
+function calculInverse(ctx, netVoulu) {
+  const { corridor, mode, deviseEnvoi, deviseRecu, decEnvoi } = ctx;
+  const paliers = paliersTries(corridor);
+  const unite = new Decimal(1).dividedBy(new Decimal(10).pow(decEnvoi)); // 0.01 ou 1
+  let meilleur = null;
+
+  paliers.forEach((palier, i) => {
+    const fraisEnvoi = palier.frais.filter((f) => f.base === 'envoye');
+    const fraisRecu = palier.frais.filter((f) => f.base === 'recu');
+
+    // montant converti nécessaire pour que le net soit atteint
+    const converti = mode === 'deduit' ? resoudre(netVoulu, fraisRecu, ctx.decRecu) : netVoulu;
+    if (converti === null) return;
+
+    const aConvertir = arrondir(convertir(converti, palier.taux, deviseRecu, deviseEnvoi), decEnvoi, 'haut');
+    let envoye = mode === 'deduit' ? resoudre(aConvertir, fraisEnvoi, decEnvoi) : aConvertir;
+    if (envoye === null) return;
+
+    // le montant trouvé doit appartenir à ce palier
+    if (envoye.lt(palier.aPartirDe)) envoye = new Decimal(palier.aPartirDe);
+    const suivant = paliers[i + 1];
+    if (suivant && envoye.gte(suivant.aPartirDe)) return;
+
+    if (!meilleur || envoye.lt(meilleur)) meilleur = envoye;
   });
-  // replaceState change l'adresse SANS recharger la page ni remplir l'historique
-  history.replaceState(null, '', `?${q}`);
+
+  if (!meilleur) return erreur('FRAIS_A_CONFIRMER');
+
+  // On refait un calcul direct. Les arrondis peuvent décaler d'une unité
+  // (0,01 DH ou 1 FCFA) : on ajuste pour obtenir le PLUS PETIT montant
+  // à envoyer qui donne AU MOINS le net voulu.
+  let resultat = calculDirect(ctx, meilleur);
+  for (let essai = 0; resultat.ok && resultat.netRecu.lt(netVoulu) && essai < 20; essai++) {
+    meilleur = meilleur.plus(unite);
+    resultat = calculDirect(ctx, meilleur);
+  }
+  for (let essai = 0; resultat.ok && essai < 20; essai++) {
+    const essaiPlusBas = calculDirect(ctx, meilleur.minus(unite));
+    if (!essaiPlusBas.ok || essaiPlusBas.netRecu.lt(netVoulu)) break;
+    meilleur = meilleur.minus(unite);
+    resultat = essaiPlusBas;
+  }
+  return resultat;
+}
+
+// ---------------------------------------------------------
+// FONCTION PUBLIQUE
+// demande = { paysId, sens: 'depuisMaroc'|'versMaroc', deviseSaisie, montant, modeFrais }
+// ---------------------------------------------------------
+export function simuler(config, demande) {
+  const { paysId, sens, deviseSaisie, montant } = demande;
+  const mode = demande.modeFrais ?? config.parametres.modeFraisParDefaut;
+
+  const pays = config.pays.find((p) => p.id === paysId);
+  if (!pays) return erreur('PAYS_INCONNU');
+  const corridor = pays.corridors?.[sens];
+  if (!corridor?.actif) return erreur('CORRIDOR_INACTIF');
+  if (mode !== 'deduit' && mode !== 'ajoute') return erreur('MODE_INVALIDE');
+
+  const deviseEnvoi = sens === 'depuisMaroc' ? 'MAD' : pays.devise;
+  const deviseRecu = sens === 'depuisMaroc' ? pays.devise : 'MAD';
+  if (deviseSaisie !== deviseEnvoi && deviseSaisie !== deviseRecu) return erreur('DEVISE_INVALIDE');
+
+  const lu = lireMontant(montant);
+  if (lu.code) return erreur(lu.code);
+  const valeur = lu.valeur;
+  if (valeur.lt(config.parametres.montantMinimum ?? 1)) return erreur('MONTANT_TROP_PETIT');
+  if (valeur.gt(MONTANT_MAXIMUM)) return erreur('MONTANT_TROP_GRAND');
+
+  const ctx = {
+    corridor, mode, deviseEnvoi, deviseRecu,
+    decEnvoi: config.devises[deviseEnvoi].decimales,
+    decRecu: config.devises[deviseRecu].decimales,
+  };
+
+  const calcul = deviseSaisie === deviseEnvoi ? 'direct' : 'inverse';
+  const saisieArrondie = arrondir(valeur, config.devises[deviseSaisie].decimales);
+  const r = calcul === 'direct' ? calculDirect(ctx, saisieArrondie) : calculInverse(ctx, saisieArrondie);
+  if (!r.ok) return r;
+
+  // Résultat final en nombres simples, prêt pour l'affichage
+  const n = (d) => d.toNumber();
+  const ligne = (l) => ({ ...l, montant: n(l.montant) });
+  return {
+    ok: true,
+    calcul,
+    pays: { id: pays.id, nom: pays.nom, drapeau: pays.drapeau },
+    sens,
+    sensLibelle: sens === 'depuisMaroc' ? `Maroc → ${pays.nom}` : `${pays.nom} → Maroc`,
+    moyenPaiement: corridor.moyenPaiement,
+    modeFrais: mode,
+    deviseSaisie,
+    montantSaisi: n(saisieArrondie),
+    deviseEnvoi,
+    deviseRecu,
+    taux: { ...r.palier.taux, autre: r.palier.taux.unite === 'MAD' ? pays.devise : 'MAD' },
+    montantEnvoye: n(r.montantEnvoye),
+    fraisEnvoi: r.fraisEnvoi.map(ligne),
+    montantConverti: n(r.montantConverti),
+    fraisRecu: r.fraisRecu.map(ligne),
+    fraisRecuPayesEnEnvoi: n(r.fraisRecuPayesEnEnvoi),
+    totalAPayer: n(r.totalAPayer),
+    netRecu: n(r.netRecu),
+  };
 }
