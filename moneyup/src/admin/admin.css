@@ -1,0 +1,114 @@
+/* =========================================================
+   Espace admin – styles propres à /admin/
+   (les couleurs viennent des variables de src/style.css)
+   ========================================================= */
+
+.admin { padding-top: 24px; padding-bottom: 60px; }
+.admin h1 { font-size: 1.4rem; margin-bottom: 4px; }
+.admin h2 { font-size: 1.1rem; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.admin h2 small { font-weight: 400; color: var(--texte-doux); font-size: 0.8rem; }
+.admin h3 { font-size: 0.95rem; }
+.admin .carte { margin-bottom: 20px; }
+.aide { color: var(--texte-doux); font-size: 0.85rem; margin-bottom: 16px; }
+.erreur { color: #b42318; font-size: 0.85rem; min-height: 1.2em; margin-bottom: 10px; }
+
+.admin-entete { display: flex; align-items: center; gap: 12px; }
+.lien-clair { color: var(--blanc); font-size: 0.85rem; }
+.btn-clair {
+  background: transparent; color: var(--blanc);
+  border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 999px;
+  padding: 5px 12px; font: inherit; font-size: 0.8rem; cursor: pointer;
+}
+
+/* ---------- Connexion ---------- */
+.connexion { max-width: 380px; margin: 40px auto; }
+.connexion .champ { display: block; }
+
+/* ---------- Champs ---------- */
+.admin-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1.5px solid var(--bordure);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.95rem;
+  background: var(--blanc);
+  color: var(--texte);
+}
+.admin-input:focus { outline: none; border-color: var(--vert); }
+.admin-input[readonly] { background: #f3f4f6; color: var(--texte-doux); }
+textarea.admin-input { resize: vertical; }
+
+.mini-champ { display: flex; flex-direction: column; gap: 4px; font-size: 0.78rem; color: var(--texte-doux); font-weight: 600; }
+.mini-champ--large { flex: 1 1 220px; margin-top: 8px; }
+.mini-saisie { display: flex; align-items: center; gap: 6px; }
+.mini-saisie .admin-input { width: 120px; font-weight: 700; }
+.mini-saisie em { font-style: normal; font-weight: 700; color: var(--texte); }
+
+.grille-params { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: end; margin-top: 12px; }
+.grille-params .mini-champ--large { margin-top: 0; }
+
+/* ---------- Interrupteur (case à cocher) ---------- */
+.interrupteur { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; }
+.interrupteur input { width: 18px; height: 18px; accent-color: var(--vert); }
+
+/* ---------- Pays et corridors ---------- */
+.pays-admin__tete { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.corridors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.corridor { border: 1px solid var(--bordure); border-radius: 12px; padding: 16px; }
+.corridor__tete { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.is-inactif .corridor, .corridor.is-inactif { opacity: 0.5; }
+
+.palier { background: #f7f8f6; border-radius: 10px; padding: 12px; margin-top: 12px; }
+.palier__tete { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.frais { border-top: 1px dashed var(--bordure); margin-top: 12px; padding-top: 10px; }
+.frais__tete { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.badge-cat {
+  align-self: center; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  background: #eaf4ee; color: var(--vert); border-radius: 999px; padding: 3px 8px;
+}
+
+/* ---------- Barème ---------- */
+.bareme table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.85rem; }
+.bareme th { text-align: left; font-size: 0.75rem; color: var(--texte-doux); padding: 4px; }
+.bareme td { padding: 3px 4px; vertical-align: middle; }
+.bareme .mini-saisie .admin-input { width: 110px; padding: 6px 8px; }
+.bareme .interrupteur { margin-top: 8px; }
+
+/* ---------- Boutons ---------- */
+.btn-principal, .btn-secondaire {
+  padding: 11px 18px; border-radius: 10px; font: inherit; font-weight: 700; cursor: pointer; border: 0;
+}
+.btn-principal { background: var(--vert); color: var(--blanc); }
+.btn-secondaire { background: var(--blanc); color: var(--texte); border: 1.5px solid var(--bordure); }
+.btn-principal:disabled, .btn-secondaire:disabled { opacity: 0.4; cursor: not-allowed; }
+.connexion .btn-principal { width: 100%; }
+.btn-lien { background: none; border: 0; color: var(--vert); font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; margin-top: 10px; padding: 0; }
+.btn-icone {
+  background: var(--blanc); border: 1px solid var(--bordure); border-radius: 8px;
+  width: 32px; height: 32px; cursor: pointer; color: #b42318;
+}
+.btn-icone:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ---------- Barre d'enregistrement (reste en haut de l'écran) ---------- */
+.barre-enregistrement {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--blanc); border-radius: var(--rayon); box-shadow: var(--ombre);
+  padding: 12px 16px; margin-bottom: 16px; border-left: 5px solid var(--vert-clair);
+}
+.barre-enregistrement.is-modifie { border-left-color: var(--or); }
+.barre-enregistrement small { display: block; color: var(--texte-doux); font-size: 0.75rem; }
+.barre-enregistrement__boutons { display: flex; gap: 8px; }
+
+.erreurs { list-style: none; margin-bottom: 16px; }
+.erreurs li { background: #fef3f2; color: #b42318; border-radius: 8px; padding: 8px 12px; font-size: 0.85rem; margin-bottom: 6px; }
+
+@media (max-width: 860px) {
+  .corridors { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .barre-enregistrement__boutons { width: 100%; }
+  .barre-enregistrement__boutons button { flex: 1; }
+  .lien-clair { display: none; }
+}
