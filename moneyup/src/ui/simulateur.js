@@ -12,6 +12,11 @@ import { formatMontant, libelleDevise, texteTaux } from './format.js';
 import { construireMessage, lienWhatsApp } from './whatsapp.js';
 
 // ---- petits morceaux de HTML réutilisables ----
+
+// Neutralise < > & " ' dans les textes saisis par l'admin (noms des frais, message…)
+const esc = (v) =>
+  String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
 const drapeau = (fichier, alt = '') =>
   `<img class="drapeau" src="/drapeaux/${fichier}.svg" alt="${alt}" width="24" height="16" />`;
 
@@ -38,6 +43,7 @@ export function monterSimulateur(conteneur, config) {
     montant: '1000',
     modeFrais: config.parametres.modeFraisParDefaut,
   };
+  lireLien(etat, config);
 
   const paysActuel = () => config.pays.find((p) => p.id === etat.paysId);
   // [devise d'envoi, devise de réception]
@@ -45,6 +51,8 @@ export function monterSimulateur(conteneur, config) {
     const p = paysActuel();
     return etat.sens === 'depuisMaroc' ? ['MAD', p.devise] : [p.devise, 'MAD'];
   };
+  const dateCourte = (iso) =>
+    new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
   const fm = (valeur, code) => formatMontant(valeur, code, config.devises[code].decimales);
 
   // ---------------------------------------------------------
@@ -75,7 +83,7 @@ export function monterSimulateur(conteneur, config) {
           <label class="champ__label" for="montant" id="label-montant"></label>
           <div class="saisie">
             <input id="montant" name="montant" type="text" inputmode="decimal"
-              autocomplete="off" value="${etat.montant}" />
+              autocomplete="off" />
             <span class="saisie__devise" id="suffixe-montant"></span>
           </div>
           <p class="champ__aide" id="aide-montant"></p>
@@ -90,11 +98,15 @@ export function monterSimulateur(conteneur, config) {
       <aside class="simu__resultat">
         <h2 class="carte__titre">Estimation de votre transfert</h2>
         <div id="resultat" aria-live="polite"></div>
-        <p class="avertissement">${config.parametres.messageAvertissement}</p>
+        <p class="avertissement">${esc(config.parametres.messageAvertissement)}</p>
       </aside>
     </div>`;
 
   const $ = (sel) => conteneur.querySelector(sel);
+
+  // Valeur posée par propriété (et non dans le HTML) : un montant venu
+  // du lien de partage ne peut ainsi jamais injecter de code dans la page.
+  $('#montant').value = etat.montant;
 
   // ---------------------------------------------------------
   // BOUTONS DE CHOIX
@@ -143,10 +155,11 @@ export function monterSimulateur(conteneur, config) {
   }
 
   function libelleFrais(f) {
-    return f.pourcentage !== null ? `${f.libelle} (${String(f.pourcentage).replace('.', ',')} %)` : f.libelle;
+    return esc(f.pourcentage !== null ? `${f.libelle} (${String(f.pourcentage).replace('.', ',')} %)` : f.libelle);
   }
 
   function rendreResultat() {
+    ecrireLien(etat);
     const r = simuler(config, etat);
 
     if (!r.ok) {
@@ -191,6 +204,10 @@ export function monterSimulateur(conteneur, config) {
         </div>
         <p class="resultat__note">${note}</p>
         ${boutonWhatsApp(r)}
+      </div>
+      <div class="resultat__pied">
+        <span>${config.misAJourLe ? `Taux en vigueur au ${dateCourte(config.misAJourLe)}` : ''}</span>
+        <button type="button" class="btn-partage" id="partager">Partager cette simulation</button>
       </div>`;
   }
 
@@ -240,6 +257,65 @@ export function monterSimulateur(conteneur, config) {
   // Entrée dans le champ ne doit pas recharger la page
   $('.simu__form').addEventListener('submit', (e) => e.preventDefault());
 
+  // Bouton "Partager cette simulation" : partage natif sur téléphone,
+  // sinon copie du lien dans le presse-papiers.
+  conteneur.addEventListener('click', async (e) => {
+    const btn = e.target.closest('#partager');
+    if (!btn) return;
+    const url = location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Simulation MoneyUp', url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        btn.textContent = '✓ Lien copié';
+        setTimeout(() => (btn.textContent = 'Partager cette simulation'), 2000);
+      }
+    } catch {
+      /* partage annulé par l'utilisateur : rien à faire */
+    }
+  });
+
   rendreChoix();
   rendreResultat();
+}
+
+// =========================================================
+// LIEN DE PARTAGE
+// ---------------------------------------------------------
+// Les choix sont recopiés dans l'adresse de la page, ex. :
+//   /?pays=togo&sens=envoi&montant=1000
+// Ce lien rouvre le simulateur exactement sur cette simulation.
+// MoneyUp peut ainsi partager un lien par pays dans ses groupes.
+// =========================================================
+const SENS_LIEN = { envoi: 'depuisMaroc', reception: 'versMaroc' };
+
+function lireLien(etat, config) {
+  const q = new URLSearchParams(location.search);
+  const pays = config.pays.find((p) => p.id === q.get('pays'));
+  if (!pays) return;
+  etat.paysId = pays.id;
+
+  const sens = SENS_LIEN[q.get('sens')];
+  etat.sens = sens && pays.corridors[sens]?.actif
+    ? sens
+    : pays.corridors.depuisMaroc?.actif ? 'depuisMaroc' : 'versMaroc';
+
+  const [envoi, recu] = etat.sens === 'depuisMaroc' ? ['MAD', pays.devise] : [pays.devise, 'MAD'];
+  etat.deviseSaisie = q.get('devise') === recu ? recu : envoi;
+
+  if (q.get('montant')) etat.montant = q.get('montant').slice(0, 20);
+  if (['deduit', 'ajoute'].includes(q.get('frais'))) etat.modeFrais = q.get('frais');
+}
+
+function ecrireLien(etat) {
+  const q = new URLSearchParams({
+    pays: etat.paysId,
+    sens: etat.sens === 'depuisMaroc' ? 'envoi' : 'reception',
+    devise: etat.deviseSaisie,
+    montant: etat.montant,
+    frais: etat.modeFrais,
+  });
+  // replaceState change l'adresse SANS recharger la page ni remplir l'historique
+  history.replaceState(null, '', `?${q}`);
 }
