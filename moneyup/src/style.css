@@ -11,7 +11,7 @@
   --fond: #f6f5ef;        /* fond de page crème */
   --blanc: #ffffff;
   --texte: #1f2421;
-  --texte-doux: #6b7280;
+  --texte-doux: #5b6270;  /* assez foncé pour être lisible (contraste AA) */
   --bordure: #e5e7eb;
   --rayon: 16px;
   --ombre: 0 4px 20px rgba(0, 0, 0, 0.06);
@@ -286,6 +286,28 @@ main.container { flex: 1; }
 .btn-whatsapp:hover { filter: brightness(1.05); }
 .btn-whatsapp:active { transform: scale(0.98); }
 .btn-whatsapp:focus-visible { outline: 3px solid var(--blanc); outline-offset: 2px; }
+
+/* ---------- Sous la carte : date des taux + partage ---------- */
+.resultat__pied {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-size: 0.75rem;
+  color: var(--texte-doux);
+}
+.btn-partage {
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--vert);
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 .avertissement { font-size: 0.75rem; color: var(--texte-doux); margin-top: 12px; }
 

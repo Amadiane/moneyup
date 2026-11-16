@@ -3,10 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="MoneyUp – Simulez votre transfert d'argent entre le Maroc, le Gabon, le Congo, le Togo et la France." />
+    <title>MoneyUp – Simulateur de transfert</title>
+    <meta name="description" content="Calculez en quelques secondes combien votre bénéficiaire va recevoir : Maroc, Gabon, Congo, Togo et France." />
     <meta name="theme-color" content="#0f5132" />
     <link rel="icon" type="image/jpeg" href="/logo-moneyup.jpg" />
-    <title>MoneyUp – Simulateur de transfert</title>
+    <link rel="apple-touch-icon" href="/logo-moneyup.jpg" />
+
+    <!-- Aperçu du lien quand on le partage sur WhatsApp, Facebook, Instagram…
+         %VITE_SITE_URL% est remplacé par Vite avec la valeur de .env.local
+         (WhatsApp exige une adresse complète pour l'image). -->
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:site_name" content="MoneyUp Transfert" />
+    <meta property="og:title" content="MoneyUp – Simulez votre transfert d'argent" />
+    <meta property="og:description" content="Maroc ⇄ Gabon, Congo, Togo, France. Taux, frais et montant reçu en quelques secondes." />
+    <meta property="og:url" content="%VITE_SITE_URL%/" />
+    <meta property="og:image" content="%VITE_SITE_URL%/apercu-partage.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <!-- Tout le contenu est injecté par src/main.js -->

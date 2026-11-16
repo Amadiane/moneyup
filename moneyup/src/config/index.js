@@ -17,11 +17,11 @@ async function lireTarifsEnLigne() {
   try {
     const { data, error } = await supabase
       .from('configuration')
-      .select('donnees')
+      .select('donnees, modifie_le')
       .eq('id', 1)
       .single();
     if (error) throw error;
-    return data?.donnees?.pays ? data.donnees : null;
+    return data?.donnees?.pays ? { ...data.donnees, misAJourLe: data.modifie_le } : null;
   } catch (err) {
     console.warn('Tarifs en ligne indisponibles : utilisation des tarifs locaux.', err);
     return null;
@@ -40,6 +40,7 @@ export async function chargerConfig() {
     pays: pays.filter((p) => p.actif),
     parametres,
     source: enLigne ? 'supabase' : 'local',
+    misAJourLe: enLigne?.misAJourLe ?? null, // date du dernier enregistrement admin
   });
 }
 

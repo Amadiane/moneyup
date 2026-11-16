@@ -31,7 +31,7 @@
   border: 1.5px solid var(--bordure);
   border-radius: 10px;
   font: inherit;
-  font-size: 0.95rem;
+  font-size: 16px; /* 16px minimum : sinon l'iPhone zoome à chaque saisie */
   background: var(--blanc);
   color: var(--texte);
 }
