@@ -18,11 +18,10 @@
 //   'ajoute' : les frais s'ajoutent à ce qu'il paie, le bénéficiaire
 //              reçoit le montant converti complet
 //
-// CALCUL DIRECT  : le client saisit dans la devise d'envoi
-// CALCUL INVERSE : le client saisit dans la devise de réception = le montant
-//                  NET qu'il veut que le bénéficiaire reçoive. Le moteur
-//                  trouve le montant à envoyer, puis refait un calcul direct
-//                  pour garantir que les deux sens sont toujours cohérents.
+// SAISIE : le montant saisi est TOUJOURS le montant de départ.
+//   - saisi dans la devise d'envoi    -> utilisé tel quel
+//   - saisi dans la devise de réception -> converti au taux MoneyUp
+//     (100 EUR = 1 100 MAD), puis même calcul.
 // =========================================================
 
 import { Decimal, convertir, arrondir } from './conversion.js';
@@ -150,72 +149,32 @@ function calculDirect(ctx, montantEnvoye) {
 }
 
 // ---------------------------------------------------------
-// Résout  x = cible + frais(x)  (plus petit x qui convient).
-// Les frais ne diminuent jamais quand le montant augmente,
-// donc la suite x0 <= x1 <= x2 … s'arrête forcément.
+// SAISIE DANS LA DEVISE DE RÉCEPTION
+// Règle validée par MoneyUp : le montant saisi est TOUJOURS le
+// montant de départ, simplement exprimé dans l'autre devise.
+//   100 EUR saisis (1 EUR = 11 MAD) = 1 100 MAD envoyés.
+// On convertit donc la saisie en devise d'envoi, puis on fait
+// exactement le même calcul qu'une saisie directe.
+//   Déduits : 1 100 DH payés, 10 % retirés -> 90 EUR reçus
+//   Ajoutés : 1 210 DH payés                -> 100 EUR reçus
 // ---------------------------------------------------------
-function resoudre(cible, listeFrais, decimales) {
-  let x = arrondir(cible, decimales, 'haut');
-  for (let i = 0; i < 500; i++) {
-    let frais = new Decimal(0);
-    for (const f of listeFrais) {
-      const m = montantFrais(f, x);
-      if (m === null) return null;
-      frais = frais.plus(arrondir(m, decimales));
-    }
-    const suivant = arrondir(cible.plus(frais), decimales, 'haut');
-    if (suivant.lte(x)) return x;
-    x = suivant;
-  }
-  return x;
-}
-
-// ---------------------------------------------------------
-// CALCUL INVERSE : à partir du net voulu par le bénéficiaire
-// ---------------------------------------------------------
-function calculInverse(ctx, netVoulu) {
-  const { corridor, mode, deviseEnvoi, deviseRecu, decEnvoi } = ctx;
+function calculDepuisDeviseRecu(ctx, montantSaisi) {
+  const { corridor, deviseEnvoi, deviseRecu, decEnvoi } = ctx;
   const paliers = paliersTries(corridor);
-  const unite = new Decimal(1).dividedBy(new Decimal(10).pow(decEnvoi)); // 0.01 ou 1
-  let meilleur = null;
+  let retenu = null;
 
+  // Le taux dépend du palier, et le palier dépend du montant envoyé :
+  // on essaie chaque palier et on garde celui qui est cohérent.
   paliers.forEach((palier, i) => {
-    const fraisEnvoi = palier.frais.filter((f) => f.base === 'envoye');
-    const fraisRecu = palier.frais.filter((f) => f.base === 'recu');
-
-    // montant converti nécessaire pour que le net soit atteint
-    const converti = mode === 'deduit' ? resoudre(netVoulu, fraisRecu, ctx.decRecu) : netVoulu;
-    if (converti === null) return;
-
-    const aConvertir = arrondir(convertir(converti, palier.taux, deviseRecu, deviseEnvoi), decEnvoi, 'haut');
-    let envoye = mode === 'deduit' ? resoudre(aConvertir, fraisEnvoi, decEnvoi) : aConvertir;
-    if (envoye === null) return;
-
-    // le montant trouvé doit appartenir à ce palier
+    let envoye = arrondir(convertir(montantSaisi, palier.taux, deviseRecu, deviseEnvoi), decEnvoi);
     if (envoye.lt(palier.aPartirDe)) envoye = new Decimal(palier.aPartirDe);
     const suivant = paliers[i + 1];
     if (suivant && envoye.gte(suivant.aPartirDe)) return;
-
-    if (!meilleur || envoye.lt(meilleur)) meilleur = envoye;
+    if (!retenu || envoye.lt(retenu)) retenu = envoye;
   });
 
-  if (!meilleur) return erreur('FRAIS_A_CONFIRMER');
-
-  // On refait un calcul direct. Les arrondis peuvent décaler d'une unité
-  // (0,01 DH ou 1 FCFA) : on ajuste pour obtenir le PLUS PETIT montant
-  // à envoyer qui donne AU MOINS le net voulu.
-  let resultat = calculDirect(ctx, meilleur);
-  for (let essai = 0; resultat.ok && resultat.netRecu.lt(netVoulu) && essai < 20; essai++) {
-    meilleur = meilleur.plus(unite);
-    resultat = calculDirect(ctx, meilleur);
-  }
-  for (let essai = 0; resultat.ok && essai < 20; essai++) {
-    const essaiPlusBas = calculDirect(ctx, meilleur.minus(unite));
-    if (!essaiPlusBas.ok || essaiPlusBas.netRecu.lt(netVoulu)) break;
-    meilleur = meilleur.minus(unite);
-    resultat = essaiPlusBas;
-  }
-  return resultat;
+  if (!retenu) return erreur('FRAIS_A_CONFIRMER');
+  return calculDirect(ctx, retenu);
 }
 
 // ---------------------------------------------------------
@@ -250,7 +209,7 @@ export function simuler(config, demande) {
 
   const calcul = deviseSaisie === deviseEnvoi ? 'direct' : 'inverse';
   const saisieArrondie = arrondir(valeur, config.devises[deviseSaisie].decimales);
-  const r = calcul === 'direct' ? calculDirect(ctx, saisieArrondie) : calculInverse(ctx, saisieArrondie);
+  const r = calcul === 'direct' ? calculDirect(ctx, saisieArrondie) : calculDepuisDeviseRecu(ctx, saisieArrondie);
   if (!r.ok) return r;
 
   // Résultat final en nombres simples, prêt pour l'affichage

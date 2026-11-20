@@ -133,13 +133,12 @@ export function monterSimulateur(conteneur, config) {
         `${drapeauDevise(code, p)}<span>${config.devises[code].nom} (${libelleDevise(code)})</span>`))
       .join('');
 
+    // Le montant saisi est toujours le montant envoyé, dans l'une ou l'autre devise.
     const saisitEnvoi = etat.deviseSaisie === envoi;
-    $('#label-montant').textContent = saisitEnvoi
-      ? 'Montant envoyé'
-      : 'Montant que le bénéficiaire doit recevoir';
+    $('#label-montant').textContent = `Montant envoyé (en ${libelleDevise(etat.deviseSaisie)})`;
     $('#aide-montant').textContent = saisitEnvoi
-      ? 'On calcule ce que le bénéficiaire reçoit.'
-      : 'On calcule combien il faut envoyer.';
+      ? 'Saisissez le montant dans votre devise.'
+      : `Converti en ${libelleDevise(envoi)} au taux MoneyUp, puis les frais sont appliqués.`;
     $('#suffixe-montant').textContent = etat.deviseSaisie;
 
     $('#choix-mode').innerHTML =
@@ -170,17 +169,17 @@ export function monterSimulateur(conteneur, config) {
     const env = r.deviseEnvoi;
     const rec = r.deviseRecu;
 
-    const entete = r.calcul === 'direct'
-      ? `<p class="resultat__label">Le bénéficiaire reçoit environ</p>
-         <p class="resultat__montant">${fm(r.netRecu, rec)}</p>
-         <p class="resultat__sous">Vous payez ${fm(r.totalAPayer, env)}</p>`
-      : `<p class="resultat__label">Vous devez payer environ</p>
-         <p class="resultat__montant">${fm(r.totalAPayer, env)}</p>
-         <p class="resultat__sous">pour que le bénéficiaire reçoive ${fm(r.netRecu, rec)}</p>`;
+    // Saisie dans la devise de réception : on rappelle l'équivalence (100 € = 1 100 DH)
+    const equivalence = r.calcul === 'inverse' ? ` (soit ${fm(r.montantSaisi, rec)})` : '';
+
+    const entete = `
+      <p class="resultat__label">Le bénéficiaire reçoit environ</p>
+      <p class="resultat__montant">${fm(r.netRecu, rec)}</p>
+      <p class="resultat__sous">Vous payez ${fm(r.totalAPayer, env)}</p>`;
 
     const lignes = [
       ligne('Taux appliqué', texteTaux(r.taux)),
-      ligne('Montant envoyé', fm(r.montantEnvoye, env)),
+      ligne('Montant envoyé', fm(r.montantEnvoye, env) + equivalence),
       ...r.fraisEnvoi.map((f) => ligne(libelleFrais(f), fm(f.montant, env))),
       ligne('Montant converti', fm(r.montantConverti, rec)),
       ...r.fraisRecu.map((f) => ligne(libelleFrais(f), fm(f.montant, rec))),

@@ -58,8 +58,8 @@ describe('Gabon', () => {
     expect(r.netRecu).toBe(738.82);
   });
 
-  it('Calcul inverse : je veux que le bénéficiaire reçoive 58 200 XAF', () => {
-    const r = sim('gabon', 'depuisMaroc', 'XAF', 58200);
+  it('Saisie en XAF : 60 000 XAF = 1 000 MAD envoyés, mêmes frais', () => {
+    const r = sim('gabon', 'depuisMaroc', 'XAF', 60000);
     expect(r.calcul).toBe('inverse');
     expect(r.montantEnvoye).toBe(1000);
     expect(r.netRecu).toBe(58200);
@@ -99,9 +99,10 @@ describe('Togo', () => {
     expect(r.netRecu).toBe(960);
   });
 
-  it('Calcul inverse Togo : je veux 56 600 XOF nets', () => {
-    const r = sim('togo', 'depuisMaroc', 'XOF', 56600);
+  it('Saisie en XOF : 60 000 XOF = 1 000 MAD envoyés', () => {
+    const r = sim('togo', 'depuisMaroc', 'XOF', 60000);
     expect(r.montantEnvoye).toBe(1000);
+    expect(r.netRecu).toBe(56600);
   });
 
   it.each([
@@ -125,6 +126,27 @@ describe('Togo', () => {
 
 // ---------------------------------------------------------
 describe('France (taux différents selon le sens)', () => {
+  // Exemple exact du client (retour du 20/11/2026)
+  it('Saisie 100 EUR, frais déduits : paie 1 100 DH, le bénéficiaire reçoit 90 EUR', () => {
+    const r = sim('france', 'depuisMaroc', 'EUR', 100, 'deduit');
+    expect(r.montantEnvoye).toBe(1100);
+    expect(frais(r, 'service')).toBe(110);
+    expect(r.totalAPayer).toBe(1100);
+    expect(r.netRecu).toBe(90);
+  });
+
+  it('Saisie 100 EUR, frais ajoutés : paie 1 210 DH, le bénéficiaire reçoit 100 EUR', () => {
+    const r = sim('france', 'depuisMaroc', 'EUR', 100, 'ajoute');
+    expect(r.totalAPayer).toBe(1210);
+    expect(r.netRecu).toBe(100);
+  });
+
+  it('France → Maroc, saisie 1 070 MAD = 100 EUR envoyés', () => {
+    const r = sim('france', 'versMaroc', 'MAD', 1070, 'deduit');
+    expect(r.montantEnvoye).toBe(100);
+    expect(r.netRecu).toBe(1016.5);
+  });
+
   it('Maroc → France, 1 100 MAD : 1 EUR = 11 MAD, 10 %', () => {
     const r = sim('france', 'depuisMaroc', 'MAD', 1100);
     expect(frais(r, 'service')).toBe(110);
@@ -162,28 +184,35 @@ describe('Saisies invalides', () => {
 });
 
 // ---------------------------------------------------------
-// Cohérence direct ↔ inverse sur TOUS les corridors, les deux
-// modes et beaucoup de montants : si j'envoie A et que le
-// bénéficiaire reçoit N, alors demander N doit donner un montant
-// à envoyer <= A, et le net obtenu doit être >= N.
+// Cohérence : saisir X dans la devise de réception doit donner
+// EXACTEMENT le même résultat que saisir son équivalent dans la
+// devise d'envoi, sur tous les corridors et dans les deux modes.
 // ---------------------------------------------------------
-describe('Cohérence calcul direct / calcul inverse', () => {
-  const montants = [10, 99.99, 500, 833.33, 1000, 7500, 12345.67, 50000, 250000];
+describe('Saisie dans la devise de réception = même calcul', () => {
+  const montants = [10, 99.99, 500, 1000, 7500, 12345.67, 60000, 250000];
   for (const paysId of ['gabon', 'congo', 'togo', 'france']) {
     for (const sens of ['depuisMaroc', 'versMaroc']) {
       for (const mode of ['deduit', 'ajoute']) {
         it(`${paysId} ${sens} (${mode})`, () => {
           for (const m of montants) {
-            const direct = sim(paysId, sens, sens === 'depuisMaroc' ? 'MAD' : config.pays.find((p) => p.id === paysId).devise, m, mode);
-            // on ignore les nets sous le minimum de saisie (1)
-            if (!direct.ok || direct.netRecu < config.parametres.montantMinimum) continue;
-            const inverse = sim(paysId, sens, direct.deviseRecu, direct.netRecu, mode);
-            expect(inverse.ok).toBe(true);
-            expect(inverse.netRecu).toBeGreaterThanOrEqual(direct.netRecu);
-            expect(inverse.montantEnvoye).toBeLessThanOrEqual(direct.montantEnvoye);
+            const parRecu = sim(paysId, sens, sens === 'depuisMaroc' ? config.pays.find((p) => p.id === paysId).devise : 'MAD', m, mode);
+            // on ignore les équivalents sous le minimum de saisie (1)
+            if (!parRecu.ok || parRecu.montantEnvoye < config.parametres.montantMinimum) continue;
+            const parEnvoi = sim(paysId, sens, parRecu.deviseEnvoi, parRecu.montantEnvoye, mode);
+            expect(parRecu.netRecu).toBe(parEnvoi.netRecu);
+            expect(parRecu.totalAPayer).toBe(parEnvoi.totalAPayer);
           }
         });
       }
     }
   }
+
+  it('Gabon → Maroc : saisie en MAD, le bon palier est choisi', () => {
+    const petit = sim('gabon', 'versMaroc', 'MAD', 500);   // 500 × 68 = 34 000 XAF < 50 000
+    expect(petit.taux.valeur).toBe(68);
+    expect(petit.montantEnvoye).toBe(34000);
+    const grand = sim('gabon', 'versMaroc', 'MAD', 1000);  // 1 000 × 67 = 67 000 XAF ≥ 50 000
+    expect(grand.taux.valeur).toBe(67);
+    expect(grand.montantEnvoye).toBe(67000);
+  });
 });
