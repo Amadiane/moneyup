@@ -72,8 +72,11 @@ function choisirPalier(corridor, montantEnvoye) {
   return choisi;
 }
 
-// Somme des frais d'une liste, chaque frais arrondi à la devise.
-// Renvoie { lignes, total } ou null si un frais n'est pas calculable.
+// Frais d'une liste.
+//   lignes : chaque frais ARRONDI, pour l'affichage
+//   total  : la somme EXACTE, pour les calculs
+// (on n'arrondit qu'à la fin : sinon 1 000 DH à 5 % donnaient 950,05 DH au lieu de 950)
+// Renvoie null si un frais n'est pas calculable.
 function calculerFrais(listeFrais, base, devise, decimales) {
   const lignes = [];
   let total = new Decimal(0);
@@ -81,7 +84,7 @@ function calculerFrais(listeFrais, base, devise, decimales) {
     const brut = montantFrais(f, base);
     if (brut === null) return null;
     const montant = arrondir(brut, decimales);
-    total = total.plus(montant);
+    total = total.plus(brut);
     lignes.push({
       id: f.id,
       libelle: f.libelle,
@@ -97,6 +100,8 @@ function calculerFrais(listeFrais, base, devise, decimales) {
 
 // ---------------------------------------------------------
 // CALCUL DIRECT : à partir du montant envoyé
+// RÈGLE D'ARRONDI : tous les calculs se font sur les valeurs exactes ;
+// on arrondit seulement les montants affichés, à la toute fin.
 // ---------------------------------------------------------
 function calculDirect(ctx, montantEnvoye) {
   const { corridor, mode, deviseEnvoi, deviseRecu, decEnvoi, decRecu } = ctx;
@@ -108,7 +113,7 @@ function calculDirect(ctx, montantEnvoye) {
   );
   if (!fraisEnvoi) return erreur('FRAIS_A_CONFIRMER');
 
-  // 2. Montant réellement converti
+  // 2. Montant réellement converti (exact), puis arrondi pour l'affichage
   const aConvertir = mode === 'deduit' ? montantEnvoye.minus(fraisEnvoi.total) : montantEnvoye;
   if (aConvertir.lte(0)) return erreur('FRAIS_TROP_ELEVES');
   const converti = arrondir(convertir(aConvertir, palier.taux, deviseEnvoi, deviseRecu), decRecu);
@@ -122,8 +127,8 @@ function calculDirect(ctx, montantEnvoye) {
   // 4. Ce que le bénéficiaire touche et ce que l'expéditeur paie
   let netRecu, totalAPayer, fraisRecuPayesEnEnvoi;
   if (mode === 'deduit') {
-    netRecu = converti.minus(fraisRecu.total);
-    totalAPayer = montantEnvoye;
+    netRecu = arrondir(converti.minus(fraisRecu.total), decRecu);
+    totalAPayer = arrondir(montantEnvoye, decEnvoi);
     fraisRecuPayesEnEnvoi = new Decimal(0);
   } else {
     netRecu = converti;
@@ -131,14 +136,14 @@ function calculDirect(ctx, montantEnvoye) {
     fraisRecuPayesEnEnvoi = arrondir(
       convertir(fraisRecu.total, palier.taux, deviseRecu, deviseEnvoi), decEnvoi, 'haut',
     );
-    totalAPayer = montantEnvoye.plus(fraisEnvoi.total).plus(fraisRecuPayesEnEnvoi);
+    totalAPayer = arrondir(montantEnvoye.plus(fraisEnvoi.total), decEnvoi).plus(fraisRecuPayesEnEnvoi);
   }
   if (netRecu.lte(0)) return erreur('FRAIS_TROP_ELEVES');
 
   return {
     ok: true,
     palier,
-    montantEnvoye,
+    montantEnvoye: arrondir(montantEnvoye, decEnvoi),
     fraisEnvoi: fraisEnvoi.lignes,
     montantConverti: converti,
     fraisRecu: fraisRecu.lignes,
@@ -159,14 +164,15 @@ function calculDirect(ctx, montantEnvoye) {
 //   Ajoutés : 1 210 DH payés                -> 100 EUR reçus
 // ---------------------------------------------------------
 function calculDepuisDeviseRecu(ctx, montantSaisi) {
-  const { corridor, deviseEnvoi, deviseRecu, decEnvoi } = ctx;
+  const { corridor, deviseEnvoi, deviseRecu } = ctx;
   const paliers = paliersTries(corridor);
   let retenu = null;
 
   // Le taux dépend du palier, et le palier dépend du montant envoyé :
   // on essaie chaque palier et on garde celui qui est cohérent.
   paliers.forEach((palier, i) => {
-    let envoye = arrondir(convertir(montantSaisi, palier.taux, deviseRecu, deviseEnvoi), decEnvoi);
+    // valeur EXACTE (1 000 / 10,7 = 93,457943…) : arrondie seulement à l'affichage
+    let envoye = convertir(montantSaisi, palier.taux, deviseRecu, deviseEnvoi);
     if (envoye.lt(palier.aPartirDe)) envoye = new Decimal(palier.aPartirDe);
     const suivant = paliers[i + 1];
     if (suivant && envoye.gte(suivant.aPartirDe)) return;

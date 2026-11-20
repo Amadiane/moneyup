@@ -7,7 +7,8 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { chargerConfig } from '../config/index.js';
 import { BAREME_MIXX_BY_YAS } from '../config/tarifs.js';
 import { simuler } from './simulateur.js';
-import { fraisBareme } from './frais.js';
+import { fraisBareme, montantFrais } from './frais.js';
+import { Decimal } from './conversion.js';
 
 let config;
 beforeAll(async () => {
@@ -141,6 +142,19 @@ describe('France (taux différents selon le sens)', () => {
     expect(r.netRecu).toBe(100);
   });
 
+  // Exemple exact du client (retour n°3 du 20/11/2026)
+  it('France → Maroc, saisie 1 000 MAD, frais déduits : 950 MAD nets, 93,46 EUR à payer', () => {
+    const r = sim('france', 'versMaroc', 'MAD', 1000, 'deduit');
+    expect(r.totalAPayer).toBe(93.46); // 1 000 / 10,7 = 93,457… arrondi au centime
+    expect(r.netRecu).toBe(950);       // 1 000 − 5 %
+  });
+
+  it('France → Maroc, saisie 1 000 MAD, frais ajoutés : 1 000 MAD nets', () => {
+    const r = sim('france', 'versMaroc', 'MAD', 1000, 'ajoute');
+    expect(r.netRecu).toBe(1000);
+    expect(r.totalAPayer).toBe(98.13); // 93,457… + 5 %
+  });
+
   it('France → Maroc, saisie 1 070 MAD = 100 EUR envoyés', () => {
     const r = sim('france', 'versMaroc', 'MAD', 1070, 'deduit');
     expect(r.montantEnvoye).toBe(100);
@@ -184,26 +198,42 @@ describe('Saisies invalides', () => {
 });
 
 // ---------------------------------------------------------
-// Cohérence : saisir X dans la devise de réception doit donner
-// EXACTEMENT le même résultat que saisir son équivalent dans la
-// devise d'envoi, sur tous les corridors et dans les deux modes.
+// RÈGLE DU CLIENT, vérifiée sur tous les corridors :
+// le montant saisi dans la devise de réception est le montant de départ.
+//   - frais ajoutés : le bénéficiaire reçoit exactement le montant saisi
+//   - frais déduits : il reçoit le montant saisi moins les frais en %,
+//     moins les frais de retrait, SANS arrondi intermédiaire
+//     (ex. 1 000 MAD − 5 % = 950 MAD, et non 950,05)
 // ---------------------------------------------------------
-describe('Saisie dans la devise de réception = même calcul', () => {
+describe('Saisie dans la devise de réception : règle du client', () => {
   const montants = [10, 99.99, 500, 1000, 7500, 12345.67, 60000, 250000];
   for (const paysId of ['gabon', 'congo', 'togo', 'france']) {
     for (const sens of ['depuisMaroc', 'versMaroc']) {
-      for (const mode of ['deduit', 'ajoute']) {
-        it(`${paysId} ${sens} (${mode})`, () => {
-          for (const m of montants) {
-            const parRecu = sim(paysId, sens, sens === 'depuisMaroc' ? config.pays.find((p) => p.id === paysId).devise : 'MAD', m, mode);
-            // on ignore les équivalents sous le minimum de saisie (1)
-            if (!parRecu.ok || parRecu.montantEnvoye < config.parametres.montantMinimum) continue;
-            const parEnvoi = sim(paysId, sens, parRecu.deviseEnvoi, parRecu.montantEnvoye, mode);
-            expect(parRecu.netRecu).toBe(parEnvoi.netRecu);
-            expect(parRecu.totalAPayer).toBe(parEnvoi.totalAPayer);
-          }
-        });
-      }
+      it(`${paysId} ${sens}`, () => {
+        const pays = config.pays.find((p) => p.id === paysId);
+        const deviseRecu = sens === 'depuisMaroc' ? pays.devise : 'MAD';
+        const dec = config.devises[deviseRecu].decimales;
+        const palier = pays.corridors[sens].paliers;
+
+        for (const m of montants) {
+          const ajoute = sim(paysId, sens, deviseRecu, m, 'ajoute');
+          const deduit = sim(paysId, sens, deviseRecu, m, 'deduit');
+          if (!ajoute.ok || !deduit.ok) continue;
+          const saisi = new Decimal(m).toDecimalPlaces(dec);
+
+          // Frais ajoutés : reçoit exactement ce qui a été saisi
+          expect(ajoute.netRecu).toBe(saisi.toNumber());
+
+          // Frais déduits : saisi × (1 − total des % sur le montant envoyé) − frais de retrait
+          const p = palier.find((x) => x.taux.valeur === deduit.taux.valeur);
+          const pct = p.frais.filter((f) => f.base === 'envoye').reduce((t, f) => t + f.valeur, 0);
+          const converti = saisi.times(new Decimal(100).minus(pct)).dividedBy(100).toDecimalPlaces(dec, Decimal.ROUND_HALF_UP);
+          let retrait = new Decimal(0);
+          for (const f of p.frais.filter((x) => x.base === 'recu')) retrait = retrait.plus(montantFrais(f, converti));
+          const attendu = converti.minus(retrait).toDecimalPlaces(dec, Decimal.ROUND_HALF_UP);
+          expect(deduit.netRecu).toBe(attendu.toNumber());
+        }
+      });
     }
   }
 
