@@ -18,6 +18,7 @@ import './admin.css';
 import { supabase } from '../config/supabase.js';
 import { DEVISES } from '../config/devises.js';
 import { verifierDonnees } from '../config/verification.js';
+import { afficherPromos } from './promos.js';
 
 const racine = document.querySelector('#admin');
 
@@ -312,9 +313,13 @@ function afficherEditeur() {
       </label>
     </section>
 
+    <section class="carte" id="section-promos"></section>
+
     ${pays.join('')}`, true);
 
   mettreAJourBarre();
+  // Codes promo : section indépendante, enregistrée directement dans Supabase
+  afficherPromos(racine.querySelector('#section-promos'), { supabase, pays: etat.brouillon.pays });
 }
 
 // Met à jour le bouton Enregistrer et la liste des erreurs, SANS redessiner le formulaire

@@ -39,7 +39,7 @@ export function construireMessage(r, config) {
   );
 
   for (const f of r.fraisEnvoi) {
-    if (f.montant === 0) continue;
+    if (f.montant === 0) continue; // frais nul ou offert par un code promo
     const nom = f.categorie === 'moneyup' ? 'Frais MoneyUp' : f.libelle;
     const pct = f.pourcentage !== null ? `${String(f.pourcentage).replace('.', ',')} % ` : '';
     lignes.push(`${nom} : ${pct}(${m(f.montant, r.deviseEnvoi)})`);
@@ -48,6 +48,8 @@ export function construireMessage(r, config) {
     if (f.montant === 0) continue;
     lignes.push(`${f.libelle} : ${m(f.montant, r.deviseRecu)}`);
   }
+
+  if (r.promo?.applique) lignes.push(`Code promo : ${r.promo.code} (${r.promo.libelle})`);
 
   lignes.push(
     `Frais : ${r.modeFrais === 'deduit' ? 'déduits du montant' : 'ajoutés à mon paiement'}`,

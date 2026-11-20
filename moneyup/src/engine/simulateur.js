@@ -26,6 +26,7 @@
 
 import { Decimal, convertir, arrondir } from './conversion.js';
 import { montantFrais } from './frais.js';
+import { promoApplicable, appliquerPromo, corridorPromo } from './promo.js';
 
 const MONTANT_MAXIMUM = 1_000_000_000;
 
@@ -91,6 +92,7 @@ function calculerFrais(listeFrais, base, devise, decimales) {
       categorie: f.categorie,
       type: f.type,
       pourcentage: f.type === 'pourcentage' ? f.valeur : null,
+      valeurInitiale: f.valeurInitiale ?? null, // réduit par un code promo
       montant,
       devise,
     });
@@ -105,7 +107,9 @@ function calculerFrais(listeFrais, base, devise, decimales) {
 // ---------------------------------------------------------
 function calculDirect(ctx, montantEnvoye) {
   const { corridor, mode, deviseEnvoi, deviseRecu, decEnvoi, decRecu } = ctx;
-  const palier = choisirPalier(corridor, montantEnvoye);
+  const palierBrut = choisirPalier(corridor, montantEnvoye);
+  // Code promo valable pour ce corridor : les frais sont réduits ou offerts
+  const palier = { ...palierBrut, frais: appliquerPromo(palierBrut.frais, ctx.promo) };
 
   // 1. Frais calculés sur le montant envoyé (MoneyUp, Airtel côté envoi…)
   const fraisEnvoi = calculerFrais(
@@ -185,7 +189,8 @@ function calculDepuisDeviseRecu(ctx, montantSaisi) {
 
 // ---------------------------------------------------------
 // FONCTION PUBLIQUE
-// demande = { paysId, sens: 'depuisMaroc'|'versMaroc', deviseSaisie, montant, modeFrais }
+// demande = { paysId, sens: 'depuisMaroc'|'versMaroc', deviseSaisie, montant, modeFrais, promo? }
+// promo   = code promo vérifié (voir promo.js), facultatif
 // ---------------------------------------------------------
 export function simuler(config, demande) {
   const { paysId, sens, deviseSaisie, montant } = demande;
@@ -207,10 +212,14 @@ export function simuler(config, demande) {
   if (valeur.lt(config.parametres.montantMinimum ?? 1)) return erreur('MONTANT_TROP_PETIT');
   if (valeur.gt(MONTANT_MAXIMUM)) return erreur('MONTANT_TROP_GRAND');
 
+  // Code promo : appliqué seulement s'il vise ce pays et ce sens
+  const promoValable = promoApplicable(demande.promo, paysId, sens);
+
   const ctx = {
     corridor, mode, deviseEnvoi, deviseRecu,
     decEnvoi: config.devises[deviseEnvoi].decimales,
     decRecu: config.devises[deviseRecu].decimales,
+    promo: promoValable ? demande.promo : null,
   };
 
   const calcul = deviseSaisie === deviseEnvoi ? 'direct' : 'inverse';
@@ -241,5 +250,14 @@ export function simuler(config, demande) {
     fraisRecuPayesEnEnvoi: n(r.fraisRecuPayesEnEnvoi),
     totalAPayer: n(r.totalAPayer),
     netRecu: n(r.netRecu),
+    // Code promo saisi : appliqué, ou valable pour un autre corridor
+    promo: demande.promo
+      ? {
+          code: demande.promo.code,
+          libelle: demande.promo.libelle,
+          applique: promoValable,
+          corridor: corridorPromo(demande.promo, config),
+        }
+      : null,
   };
 }

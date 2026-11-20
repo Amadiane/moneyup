@@ -10,6 +10,7 @@
 import { simuler } from '../engine/simulateur.js';
 import { formatMontant, libelleDevise, texteTaux } from './format.js';
 import { construireMessage, lienWhatsApp } from './whatsapp.js';
+import { verifierCodePromo } from '../config/promo.js';
 
 // ---- petits morceaux de HTML réutilisables ----
 
@@ -40,6 +41,7 @@ export function monterSimulateur(conteneur, config) {
     deviseSaisie: 'MAD',
     montant: '1000',
     modeFrais: config.parametres.modeFraisParDefaut,
+    promo: null, // code promo vérifié (jamais recopié dans le lien de partage)
   };
   lireLien(etat, config);
 
@@ -87,6 +89,16 @@ export function monterSimulateur(conteneur, config) {
           <span class="champ__label">Frais</span>
           <div class="choix choix--2" id="choix-mode"></div>
           <p class="champ__aide" id="aide-frais"></p>
+        </div>
+
+        <div class="champ">
+          <label class="champ__label" for="code-promo">Code promo <span class="facultatif">(facultatif)</span></label>
+          <div class="promo">
+            <input id="code-promo" name="code-promo" class="promo__input" type="text" maxlength="30"
+              autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Ex. CG-7K3PQX" />
+            <button type="button" class="promo__btn" id="appliquer-promo">Appliquer</button>
+          </div>
+          <div class="promo__message" id="message-promo" aria-live="polite"></div>
         </div>
       </form>
 
@@ -150,13 +162,21 @@ export function monterSimulateur(conteneur, config) {
     return `<div class="ligne ${classe}"><span>${libelle}</span><strong>${valeur}</strong></div>`;
   }
 
+  const pct = (v) => `${String(v).replace('.', ',')} %`;
   function libelleFrais(f) {
-    return esc(f.pourcentage !== null ? `${f.libelle} (${String(f.pourcentage).replace('.', ',')} %)` : f.libelle);
+    // Frais réduit par un code promo : « (3,5 % → offert) » ou « (10 % → 9 %) »
+    if (f.valeurInitiale !== null && f.valeurInitiale !== undefined) {
+      const avant = f.valeurInitiale === 'bareme' ? 'barème' : pct(f.valeurInitiale);
+      const apres = f.pourcentage === 0 ? 'offert' : pct(f.pourcentage);
+      return esc(`${f.libelle} (${avant} → ${apres})`);
+    }
+    return esc(f.pourcentage !== null ? `${f.libelle} (${pct(f.pourcentage)})` : f.libelle);
   }
 
   function rendreResultat() {
     ecrireLien(etat);
     const r = simuler(config, etat);
+    rendreMessagePromo(r);
 
     if (!r.ok) {
       $('#resultat').innerHTML = `<div class="resultat resultat--vide"><p>${r.message}</p></div>`;
@@ -176,10 +196,14 @@ export function monterSimulateur(conteneur, config) {
 
     // Les frais sont signés et colorés : "−" s'ils sont retirés, "+" s'ils sont ajoutés
     const signe = r.modeFrais === 'deduit' ? '− ' : '+ ';
-    const frais = (f, devise) =>
-      ligne(libelleFrais(f), f.montant > 0 ? signe + fm(f.montant, devise) : fm(f.montant, devise), 'ligne--frais');
+    const frais = (f, devise) => {
+      const reduit = f.valeurInitiale !== null && f.valeurInitiale !== undefined;
+      const valeur = reduit && f.montant === 0 ? 'Offert' : f.montant > 0 ? signe + fm(f.montant, devise) : fm(f.montant, devise);
+      return ligne(libelleFrais(f), valeur, reduit ? 'ligne--frais ligne--reduit' : 'ligne--frais');
+    };
 
     const lignes = [
+      ...(r.promo?.applique ? [ligne('Code promo', esc(r.promo.code), 'ligne--promo')] : []),
       ligne('Taux appliqué', texteTaux(r.taux), 'ligne--taux'),
       ligne('Montant envoyé', fm(r.montantEnvoye, env) + equivalence),
       ...r.fraisEnvoi.map((f) => frais(f, env)),
@@ -263,6 +287,84 @@ export function monterSimulateur(conteneur, config) {
 
   // Entrée dans le champ ne doit pas recharger la page
   $('.simu__form').addEventListener('submit', (e) => e.preventDefault());
+
+  // ---------------------------------------------------------
+  // CODE PROMO
+  // ---------------------------------------------------------
+  function rendreMessagePromo(r) {
+    const zone = $('#message-promo');
+    if (!r.ok) return; // montant invalide : on ne touche pas au message du code
+    if (!etat.promo) {
+      if (zone.dataset.erreur) return; // une erreur de saisie reste affichée
+      zone.innerHTML = '';
+      zone.className = 'promo__message';
+      return;
+    }
+    const applique = r?.promo?.applique;
+    zone.className = `promo__message ${applique ? 'is-ok' : 'is-attention'}`;
+    zone.innerHTML = `
+      <span>${applique
+        ? `✓ Code <strong>${esc(etat.promo.code)}</strong> appliqué : ${esc(etat.promo.libelle)}`
+        : `Le code <strong>${esc(etat.promo.code)}</strong> est valable uniquement pour ${esc(r?.promo?.corridor ?? '')}.`}</span>
+      <button type="button" class="promo__retirer" id="retirer-promo">Retirer</button>`;
+  }
+
+  function afficherErreurPromo(message) {
+    const zone = $('#message-promo');
+    zone.dataset.erreur = '1';
+    zone.className = 'promo__message is-erreur';
+    zone.textContent = message;
+  }
+
+  async function appliquerCode() {
+    const bouton = $('#appliquer-promo');
+    bouton.disabled = true;
+    bouton.textContent = 'Vérification…';
+    const { promo, erreur } = await verifierCodePromo($('#code-promo').value);
+    bouton.disabled = false;
+    bouton.textContent = 'Appliquer';
+    delete $('#message-promo').dataset.erreur;
+
+    if (erreur) return afficherErreurPromo(erreur);
+
+    const pays = config.pays.find((p) => p.id === promo.paysId);
+    if (!pays) return afficherErreurPromo("Ce code n'est pas utilisable pour le moment.");
+
+    // On place le simulateur sur le pays (et le sens) du code
+    etat.promo = promo;
+    $('#code-promo').value = promo.code;
+    if (etat.paysId !== pays.id || (promo.sens !== 'tous' && etat.sens !== promo.sens)) {
+      etat.paysId = pays.id;
+      const sensVoulu = promo.sens === 'tous' ? etat.sens : promo.sens;
+      etat.sens = pays.corridors[sensVoulu]?.actif ? sensVoulu
+        : pays.corridors.depuisMaroc?.actif ? 'depuisMaroc' : 'versMaroc';
+      etat.deviseSaisie = devisesCorridor()[0];
+    }
+    rendreChoix();
+    rendreResultat();
+  }
+
+  $('#appliquer-promo').addEventListener('click', appliquerCode);
+  // Dès que le client retape son code, l'ancien message d'erreur disparaît
+  $('#code-promo').addEventListener('input', () => {
+    const zone = $('#message-promo');
+    if (!zone.dataset.erreur) return;
+    delete zone.dataset.erreur;
+    zone.className = 'promo__message';
+    zone.textContent = '';
+  });
+  $('#code-promo').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      appliquerCode();
+    }
+  });
+  conteneur.addEventListener('click', (e) => {
+    if (!e.target.closest('#retirer-promo')) return;
+    etat.promo = null;
+    $('#code-promo').value = '';
+    rendreResultat();
+  });
 
   // Bouton "Partager cette simulation" : partage natif sur téléphone,
   // sinon copie du lien dans le presse-papiers.

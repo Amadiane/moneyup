@@ -391,3 +391,71 @@ main.container { flex: 1; }
 .resultat__pied span { font-weight: 700; color: var(--vert-texte); }
 .avertissement { font-weight: 600; }
 .footer { font-weight: 600; }
+
+/* ---------- Code promo ---------- */
+.facultatif { font-weight: 600; color: var(--texte-doux); }
+.promo { display: flex; gap: 8px; }
+.promo__input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1.5px solid var(--bordure);
+  border-radius: 12px;
+  font: inherit;
+  font-size: 16px; /* évite le zoom automatique sur iPhone */
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--texte);
+  background: var(--blanc);
+}
+.promo__input::placeholder { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.promo__input:focus { outline: none; border-color: var(--vert); }
+.promo__btn {
+  padding: 0 18px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--vert);
+  color: var(--blanc);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.promo__btn:disabled { opacity: 0.6; cursor: wait; }
+.promo__btn:focus-visible { outline: 3px solid var(--or); outline-offset: 2px; }
+
+.promo__message:empty { display: none; }
+.promo__message {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.promo__message.is-ok { background: #eaf4ee; color: var(--vert); }
+.promo__message.is-attention { background: #fff6dd; color: #6b4e00; }
+.promo__message.is-erreur { background: #fef3f2; color: #b42318; }
+.promo__retirer {
+  background: none;
+  border: 0;
+  font: inherit;
+  font-weight: 700;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Lignes de la carte liées au code promo */
+.ligne--promo strong {
+  color: var(--vert);
+  background: var(--or);
+  border-radius: 6px;
+  padding: 1px 8px;
+  letter-spacing: 1px;
+}
+.ligne--reduit span, .ligne--reduit strong { color: #b9f0c9; } /* frais réduits : vert clair */
