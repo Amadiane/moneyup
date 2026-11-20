@@ -144,7 +144,7 @@ main.container { flex: 1; }
   color: var(--texte-doux);
   margin-bottom: 8px;
 }
-.champ__aide { font-size: 0.78rem; color: var(--texte-doux); margin-top: 6px; }
+.champ__aide { font-size: 0.78rem; font-weight: 700; color: var(--texte-doux); margin-top: 6px; }
 
 /* ---------- Boutons de choix (pays, sens, devise, frais) ---------- */
 .choix { display: grid; gap: 8px; }
@@ -213,14 +213,21 @@ main.container { flex: 1; }
   background: transparent;
 }
 .saisie__devise {
-  padding: 0 16px;
-  font-weight: 700;
-  color: var(--texte-doux);
-  border-left: 1px solid var(--bordure);
+  /* menu déroulant de la devise, collé au champ montant */
   align-self: stretch;
-  display: flex;
-  align-items: center;
+  border: 0;
+  border-left: 1px solid var(--bordure);
+  padding: 0 34px 0 16px;
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--vert);
+  background: #eaf4ee url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%230f5132' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 12px center;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
 }
+.saisie__devise:focus-visible { outline: 3px solid var(--or); outline-offset: -3px; }
 
 /* ---------- Carte de résultat (verte) ---------- */
 .resultat {

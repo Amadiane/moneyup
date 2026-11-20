@@ -20,8 +20,6 @@ const esc = (v) =>
 const drapeau = (fichier, alt = '') =>
   `<img class="drapeau" src="/drapeaux/${fichier}.svg" alt="${alt}" width="24" height="16" />`;
 
-// Drapeau associé à une devise dans le corridor choisi
-const drapeauDevise = (code, pays) => drapeau(code === 'MAD' ? 'maroc' : pays.id);
 
 function bouton(champ, valeur, actif, contenu, desactive = false) {
   return `
@@ -75,16 +73,12 @@ export function monterSimulateur(conteneur, config) {
         </div>
 
         <div class="champ">
-          <span class="champ__label">Je saisis le montant en</span>
-          <div class="choix choix--2" id="choix-devise"></div>
-        </div>
-
-        <div class="champ">
           <label class="champ__label" for="montant" id="label-montant"></label>
           <div class="saisie">
             <input id="montant" name="montant" type="text" inputmode="decimal"
               autocomplete="off" />
-            <span class="saisie__devise" id="suffixe-montant"></span>
+            <!-- Choix de la devise de saisie, directement à côté du montant -->
+            <select class="saisie__devise" id="devise-saisie" aria-label="Devise du montant saisi"></select>
           </div>
           <p class="champ__aide" id="aide-montant"></p>
         </div>
@@ -92,6 +86,7 @@ export function monterSimulateur(conteneur, config) {
         <div class="champ">
           <span class="champ__label">Frais</span>
           <div class="choix choix--2" id="choix-mode"></div>
+          <p class="champ__aide" id="aide-frais"></p>
         </div>
       </form>
 
@@ -128,9 +123,9 @@ export function monterSimulateur(conteneur, config) {
       (etat.sens === 'depuisMaroc' ? `Depuis le Maroc vers ${p.nom}` : `Depuis ${p.nom} vers le Maroc`) +
       (moyen ? ` · via ${moyen}` : '');
 
-    $('#choix-devise').innerHTML = [envoi, recu]
-      .map((code) => bouton('deviseSaisie', code, code === etat.deviseSaisie,
-        `${drapeauDevise(code, p)}<span>${config.devises[code].nom} (${libelleDevise(code)})</span>`))
+    // Menu déroulant des 2 devises du corridor (ex. MAD / XOF)
+    $('#devise-saisie').innerHTML = [envoi, recu]
+      .map((code) => `<option value="${code}" ${code === etat.deviseSaisie ? 'selected' : ''}>${libelleDevise(code)}</option>`)
       .join('');
 
     // Le montant saisi est toujours le montant envoyé, dans l'une ou l'autre devise.
@@ -139,11 +134,13 @@ export function monterSimulateur(conteneur, config) {
     $('#aide-montant').textContent = saisitEnvoi
       ? 'Saisissez le montant dans votre devise.'
       : `Converti en ${libelleDevise(envoi)} au taux MoneyUp, puis les frais sont appliqués.`;
-    $('#suffixe-montant').textContent = etat.deviseSaisie;
 
     $('#choix-mode').innerHTML =
       bouton('modeFrais', 'deduit', etat.modeFrais === 'deduit', 'Déduits du montant') +
       bouton('modeFrais', 'ajoute', etat.modeFrais === 'ajoute', 'Ajoutés à mon paiement');
+    $('#aide-frais').textContent = etat.modeFrais === 'deduit'
+      ? 'Vous payez le montant saisi. Les frais en sont retirés : le bénéficiaire reçoit un peu moins.'
+      : 'Les frais s’ajoutent à ce que vous payez : le bénéficiaire reçoit le montant complet.';
   }
 
   // ---------------------------------------------------------
@@ -244,6 +241,12 @@ export function monterSimulateur(conteneur, config) {
       }
       etat.deviseSaisie = devisesCorridor()[0];
     }
+    rendreChoix();
+    rendreResultat();
+  });
+
+  $('#devise-saisie').addEventListener('change', (e) => {
+    etat.deviseSaisie = e.target.value;
     rendreChoix();
     rendreResultat();
   });
