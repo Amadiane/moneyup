@@ -174,15 +174,20 @@ export function monterSimulateur(conteneur, config) {
       <p class="resultat__montant">${fm(r.netRecu, rec)}</p>
       <p class="resultat__sous">Vous payez ${fm(r.totalAPayer, env)}</p>`;
 
+    // Les frais sont signés et colorés : "−" s'ils sont retirés, "+" s'ils sont ajoutés
+    const signe = r.modeFrais === 'deduit' ? '− ' : '+ ';
+    const frais = (f, devise) =>
+      ligne(libelleFrais(f), f.montant > 0 ? signe + fm(f.montant, devise) : fm(f.montant, devise), 'ligne--frais');
+
     const lignes = [
-      ligne('Taux appliqué', texteTaux(r.taux)),
+      ligne('Taux appliqué', texteTaux(r.taux), 'ligne--taux'),
       ligne('Montant envoyé', fm(r.montantEnvoye, env) + equivalence),
-      ...r.fraisEnvoi.map((f) => ligne(libelleFrais(f), fm(f.montant, env))),
+      ...r.fraisEnvoi.map((f) => frais(f, env)),
       ligne('Montant converti', fm(r.montantConverti, rec)),
-      ...r.fraisRecu.map((f) => ligne(libelleFrais(f), fm(f.montant, rec))),
+      ...r.fraisRecu.map((f) => frais(f, rec)),
     ];
     if (r.modeFrais === 'ajoute' && r.fraisRecuPayesEnEnvoi > 0) {
-      lignes.push(ligne('Frais de retrait réglés par vous', fm(r.fraisRecuPayesEnEnvoi, env)));
+      lignes.push(ligne('Frais de retrait réglés par vous', '+ ' + fm(r.fraisRecuPayesEnEnvoi, env), 'ligne--frais'));
     }
 
     const note = r.modeFrais === 'deduit'
@@ -195,8 +200,8 @@ export function monterSimulateur(conteneur, config) {
         <div class="resultat__lignes">
           ${lignes.join('')}
           <div class="resultat__sep"></div>
-          ${ligne('Total à payer', fm(r.totalAPayer, env), 'ligne--fort')}
-          ${ligne('Net reçu par le bénéficiaire', fm(r.netRecu, rec), 'ligne--fort')}
+          ${ligne('Total à payer', fm(r.totalAPayer, env), 'ligne--fort ligne--total')}
+          ${ligne('Net reçu par le bénéficiaire', fm(r.netRecu, rec), 'ligne--fort ligne--net')}
         </div>
         <p class="resultat__note">${note}</p>
         ${boutonWhatsApp(r)}

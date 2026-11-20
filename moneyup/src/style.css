@@ -331,3 +331,63 @@ main.container { flex: 1; }
   .choix--pays { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .carte, .simu__resultat { padding: 16px; }
 }
+
+
+/* =========================================================
+   MISE EN VALEUR (gras et couleurs)
+   Règle : le gras pour tout ce qui se lit,
+   la couleur pour ce qui doit sauter aux yeux :
+     or     -> le net reçu et le taux
+     corail -> les frais (ce que ça coûte)
+     blanc  -> le total à payer
+   ========================================================= */
+:root {
+  --corail: #ffc4a8;      /* frais, sur fond vert */
+  --vert-texte: #1d6b45;  /* textes d'aide, sur fond clair */
+}
+
+/* Textes généraux */
+.hero__text { font-weight: 500; }
+.hero__text strong { color: var(--vert); }
+.brand__text small { font-weight: 700; }
+.champ__label { font-weight: 700; color: var(--texte); font-size: 0.85rem; }
+.champ__aide { color: var(--vert-texte); }
+.choix__btn { font-weight: 700; }
+.saisie input { font-weight: 800; }
+
+/* Carte de résultat */
+.resultat__label { font-weight: 700; opacity: 1; color: rgba(255, 255, 255, 0.9); }
+.resultat__montant { color: var(--or); }
+.resultat__sous { font-weight: 800; font-size: 0.9rem; color: var(--blanc); }
+.ligne span { font-weight: 600; opacity: 1; color: rgba(255, 255, 255, 0.88); }
+.ligne strong { font-weight: 800; }
+
+.ligne--taux strong {
+  border: 1px solid rgba(242, 201, 76, 0.6);
+  color: var(--or);
+  border-radius: 6px;
+  padding: 1px 8px;
+}
+.ligne--frais span,
+.ligne--frais strong { color: var(--corail); }
+
+.ligne--total { font-size: 0.95rem; }
+.ligne--total span, .ligne--total strong { color: var(--blanc); font-weight: 800; }
+
+.ligne--net {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(242, 201, 76, 0.5);
+  font-size: 1.1rem;
+}
+.ligne--net span, .ligne--net strong { color: var(--or); font-weight: 800; }
+
+.resultat__note { font-weight: 700; }
+.btn-whatsapp { font-size: 1.05rem; }
+
+/* Sous la carte */
+.resultat__pied span { font-weight: 700; color: var(--vert-texte); }
+.avertissement { font-weight: 600; }
+.footer { font-weight: 600; }

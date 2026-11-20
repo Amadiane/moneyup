@@ -28,8 +28,8 @@ app.innerHTML = `
       <p class="eyebrow">Votre transfert, en toute clarté</p>
       <h1>Combien allez-vous envoyer ou recevoir ?</h1>
       <p class="hero__text">
-        Choisissez le pays, le sens du transfert et le montant.
-        Notre simulateur estime la conversion selon les paramètres MoneyUp affichés.
+        Choisissez <strong>le pays</strong>, <strong>le sens du transfert</strong> et <strong>le montant</strong>.
+        Notre simulateur estime la conversion selon les <strong>paramètres MoneyUp</strong> affichés.
       </p>
     </section>
 
